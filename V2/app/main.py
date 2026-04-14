@@ -1,13 +1,31 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from pydantic import BaseModel
 import shutil
 import os
+import numpy as np
 from core.parser.pdf_parser import parse_pdf
 from core.parser.docx_parser import parse_docx
+from core.rag.chunking import chunk_text
+from core.rag.embeddings import embed_texts
+from core.rag.faiss_backend import build_faiss_index
+from core.classifier.llm_classifier import classify_clause_llm
+from core.risk.rule_based import rule_based_risk_flags
+from core.risk.llm_risk import llm_risk_score
+from core.summarizer.summarizer import summarize_contract_llm
+from core.conflict.detector import detect_conflicts_rule_based, detect_conflicts_llm, all_clause_pairs
+from core.qa.qa import answer_question
 
 app = FastAPI()
 
 UPLOAD_DIR = "./tmp"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+class TextRequest(BaseModel):
+    contract_text: str
+
+class QARequest(BaseModel):
+    question: str
+    contract_text: str
 
 @app.post("/parse")
 def parse_contract(file: UploadFile = File(...)):
@@ -24,3 +42,63 @@ def parse_contract(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {e}")
     return {"text": text[:10000]}  # Return max 10k chars for now
+
+@app.post("/rag/chunks")
+def rag_chunks(payload: TextRequest):
+    text = payload.contract_text
+    chunks = chunk_text(text)
+    return {"chunks": chunks}
+
+@app.post("/classify")
+def classify_endpoint(payload: TextRequest):
+    text = payload.contract_text
+    chunks = chunk_text(text)
+    labeled = []
+    for chunk in chunks:
+        res = classify_clause_llm(chunk)
+        labeled.append({"text": chunk, "label": res["label"], "reasoning": res["reasoning"]})
+    return {"clauses": labeled}
+
+@app.post("/risk")
+def risk_endpoint(payload: TextRequest):
+    text = payload.contract_text
+    chunks = chunk_text(text)
+    risky = []
+    for chunk in chunks:
+        rules = rule_based_risk_flags(chunk)
+        llm_score, llm_reason, _ = llm_risk_score(chunk)
+        risky.append({"text": chunk, "rule_flags": rules, "llm_risk": llm_score, "llm_reasoning": llm_reason})
+    return {"risks": risky}
+
+@app.post("/summarize")
+def summarize_endpoint(payload: TextRequest):
+    text = payload.contract_text
+    chunks = chunk_text(text)
+    # Classify and risk each chunk:
+    clause_infos = []
+    for chunk in chunks:
+        label = classify_clause_llm(chunk)
+        rules = rule_based_risk_flags(chunk)
+        llm_score, llm_reason, _ = llm_risk_score(chunk)
+        clause_infos.append({"text": chunk, "label": label["label"], "classification_reasoning": label["reasoning"], "rule_risks": rules, "risk": llm_score, "risk_reasoning": llm_reason})
+    result = summarize_contract_llm(text, clause_infos)
+    return {"summary": result}
+
+@app.post("/conflicts")
+def conflict_endpoint(payload: TextRequest):
+    text = payload.contract_text
+    chunks = chunk_text(text)
+    rule_conf = detect_conflicts_rule_based(chunks)
+    llm_conf = detect_conflicts_llm(all_clause_pairs(chunks, max_len=25))
+    return {"rule_based_conflicts": rule_conf, "llm_conflicts": llm_conf}
+
+@app.post("/qa")
+def qa_endpoint(payload: QARequest):
+    text = payload.contract_text
+    if not text or len(text) < 80:
+        raise HTTPException(status_code=400, detail="Contract text too short or missing.")
+    chunks = chunk_text(text)
+    embeddings = embed_texts(chunks)
+    index = build_faiss_index(np.array(embeddings))
+    qa = answer_question(payload.question, chunks, index, embed_texts)
+    return qa
