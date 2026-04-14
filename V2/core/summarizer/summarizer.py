@@ -32,7 +32,7 @@ def summarize_contract_llm(contract_text, clause_infos, url=LMSTUDIO_URL, model=
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.2,
-        "max_tokens": 700,
+        "max_tokens": 2000,
     }
     resp = requests.post(url, json=body)
     if not resp.ok:

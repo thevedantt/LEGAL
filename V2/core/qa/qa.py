@@ -29,7 +29,7 @@ A (with citations):"""
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.1,
-        "max_tokens": 250,
+        "max_tokens": 500,
     }
     resp = requests.post(url, json=body)
     if not resp.ok:

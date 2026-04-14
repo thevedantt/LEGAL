@@ -77,11 +77,18 @@ if st.button("Summarize Contract"):
     with st.spinner("Summarizing ..."):
         resp = requests.post(f"{BACKEND}/summarize", json={"contract_text": contract_text})
         if resp.ok:
-            summary = resp.json()["summary"]
-            st.subheader("Summary:")
-            st.json(summary)
+            data = resp.json()
+            if "summary" in data:
+                summary = data["summary"]
+                st.subheader("Summary:")
+                st.json(summary)
+            else:
+                st.error("Backend error: The 'summary' key is missing from the response.")
+                st.write("Raw Response:")
+                st.json(data)
         else:
-            st.error(f"Summarization error: {resp.text}")
+            st.error(f"Summarization error: {resp.status_code}")
+            st.write(resp.text)
 
 if st.button("Check Conflicts"):
     with st.spinner("Detecting ..."):

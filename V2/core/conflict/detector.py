@@ -37,7 +37,7 @@ def detect_conflicts_llm(clause_pairs, url=LMSTUDIO_URL, model=MODEL_NAME):
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.0,
-            "max_tokens": 150,
+            "max_tokens": 300,
         }
         resp = requests.post(url, json=body)
         if not resp.ok:

@@ -9,8 +9,10 @@ def llm_risk_score(clause, url=LMSTUDIO_URL, model=MODEL_NAME):
     Asks LLM to evaluate risk of a clause. Returns (risk_level, risk_reasoning, raw answer)
     """
     prompt = f"""Assess the following contract clause for risk to our company. Answer only in this format:
-Risk:[High|Medium|Low]\nReasoning:<one-sentence explanation>\n
-Clause: {clause}"
+Risk:[High|Medium|Low]
+Reasoning:<one-sentence explanation>
+
+Clause: {clause}"""
     body = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
