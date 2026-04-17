@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import os
+import matplotlib.pyplot as plt
 
 BACKEND = os.getenv("LEGAL_BACKEND_URL", "http://127.0.0.1:8000")
 
@@ -73,15 +74,52 @@ if st.button("Risk Assessment"):
         else:
             st.error(f"Risk error: {resp.text}")
 
-if st.button("Summarize Contract"):
-    with st.spinner("Summarizing ..."):
+import matplotlib.pyplot as plt
+
+if st.button("Analyze Risk"):
+    with st.spinner("Analyzing contract risk ..."):
         resp = requests.post(f"{BACKEND}/summarize", json={"contract_text": contract_text})
         if resp.ok:
             data = resp.json()
             if "summary" in data:
                 summary = data["summary"]
-                st.subheader("Summary:")
-                st.json(summary)
+                # 📊 Summary Panel
+                st.subheader("📊 Contract Summary")
+                st.markdown(f"**Parties:** {', '.join(summary.get('parties', []))}")
+                st.markdown(f"**Effective Date:** {summary.get('effective_date', None)}")
+                st.markdown(f"**Duration:** {summary.get('duration', None)}")
+                # ⚠️ Clause Analysis Panel
+                st.subheader("⚠️ Clause Analysis")
+                key_clauses = summary.get('key_clauses', [])
+                for c in key_clauses:
+                    col1, col2 = st.columns([2,1])
+                    with col1:
+                        st.markdown(f"**{c.get('label', 'Clause')}**")
+                        st.write(c.get('text', ''))
+                    risk = c.get('risk', 'Unknown')
+                    reason = c.get('reasoning', '')
+                    risk_color = {'High':'#FF3B30','Medium':'#FFD600','Low':'#4CD964'}.get(risk, '#CCCCCC')
+                    with col2:
+                        st.markdown(f"**Risk:** <span style='color:{risk_color}'>{risk}</span>", unsafe_allow_html=True)
+                        st.caption(f"{reason}")
+                # 📈 Risk Distribution
+                st.subheader("📈 Risk Distribution Pie Chart")
+                # Aggregate risks
+                risk_counts = {'High':0, 'Medium':0, 'Low':0}
+                for c in key_clauses:
+                    r = c.get('risk','Unknown')
+                    if r in risk_counts:
+                        risk_counts[r] += 1
+                labels = [k for k in risk_counts.keys() if risk_counts[k]>0]
+                sizes = [risk_counts[k] for k in labels]
+                colors = ['#FF3B30','#FFD600','#4CD964'][:len(labels)]
+                if sizes:
+                    fig, ax = plt.subplots()
+                    ax.pie(sizes, labels=labels, autopct='%1.1f%%', colors=colors, startangle=140)
+                    ax.axis('equal')
+                    st.pyplot(fig)
+                else:
+                    st.info("No risk data to display.")
             else:
                 st.error("Backend error: The 'summary' key is missing from the response.")
                 st.write("Raw Response:")
