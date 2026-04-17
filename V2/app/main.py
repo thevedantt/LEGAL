@@ -80,7 +80,15 @@ def classify_endpoint(payload: TextRequest):
             res = classify_clause_llm(chunk)
         except Exception as e:
             res = {"label": "Error", "reasoning": str(e)}
-        labeled.append({"text": chunk, "label": res.get("label", "Error"), "reasoning": res.get("reasoning", "Error")})
+        # Consistency fix: Fairness mapping
+        explanation = res.get("reasoning", "Error").lower()
+        fairness_label = None
+        if "favors the company" in explanation:
+            fairness_label = "Company"
+        elif "favors the employee" in explanation:
+            fairness_label = "Employee"
+        out_label = fairness_label if fairness_label else res.get("label", "Error")
+        labeled.append({"text": chunk, "label": out_label, "reasoning": res.get("reasoning", "Error")})
     return {"clauses": labeled}
 
 @app.post("/risk")
@@ -88,14 +96,17 @@ def risk_endpoint(payload: TextRequest):
     text = payload.contract_text
     chunks = chunk_text(text)
     risky = []
+    risk_counts = {"High": 0, "Medium": 0, "Low": 0}
     for chunk in chunks:
         rules = rule_based_risk_flags(chunk)
         try:
             llm_score, llm_reason, raw = llm_risk_score(chunk)
         except Exception as e:
             llm_score, llm_reason = "Error", str(e)
+        if llm_score in risk_counts:
+            risk_counts[llm_score] += 1
         risky.append({"text": chunk, "rule_flags": rules, "llm_risk": llm_score, "llm_reasoning": llm_reason})
-    return {"risks": risky}
+    return {"risks": risky, "risk_aggregation": risk_counts}
 
 @app.post("/summarize")
 def summarize_endpoint(payload: TextRequest):
@@ -116,16 +127,32 @@ def summarize_endpoint(payload: TextRequest):
             except Exception as e:
                 llm_score, llm_reason = "Error", str(e)
                 
+            # Consistency fix: Fairness label mapping for summarizer
+            explanation = label.get("reasoning", "").lower()
+            fairness_label = None
+            if "favors the company" in explanation:
+                fairness_label = "Company"
+            elif "favors the employee" in explanation:
+                fairness_label = "Employee"
+            out_label = fairness_label if fairness_label else label.get("label", "Error")
             clause_infos.append({
                 "text": chunk, 
-                "label": label.get("label", "Error"), 
+                "label": out_label, 
                 "classification_reasoning": label.get("reasoning",""), 
                 "rule_risks": rules, 
                 "risk": llm_score, 
                 "risk_reasoning": llm_reason
             })
             
-        result = summarize_contract_llm(text, clause_infos)
+        # Remove duplicate clauses by text in clause_infos
+        seen_clauses = set()
+        unique_clause_infos = []
+        for ci in clause_infos:
+            txt = ci["text"].strip()
+            if txt not in seen_clauses:
+                seen_clauses.add(txt)
+                unique_clause_infos.append(ci)
+        result = summarize_contract_llm(text, unique_clause_infos)
     except Exception as e:
         result = {"error": f"Summarization process failed: {str(e)}"}
         

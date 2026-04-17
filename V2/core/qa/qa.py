@@ -16,8 +16,12 @@ def answer_question(question, chunks, index, embed_fn, url=LMSTUDIO_URL, model=M
     """
     q_emb = embed_fn([question])
     neighbors = index.search(np.array(q_emb), top_k)[1][0]
+    # Remove invalid indices, enforce unique and sort
+    neighbors = [int(i) for i in neighbors if int(i) >= 0]
+    neighbors = sorted(list(set(neighbors)))
     cited_chunks = [chunks[i] for i in neighbors]
     context = "\n---\n".join([f"[{i}] {c}" for i, c in zip(neighbors, cited_chunks)])
+
     prompt = f"""You are a legal contract expert. Using ONLY the context below, answer the user's question. Always cite section indices ([index]) that support your answer.
 
 CONTEXT:
@@ -35,5 +39,6 @@ A (with citations):"""
     if not resp.ok:
         return {"answer": "LLM error", "citations": []}
     answer = resp.json()["choices"][0]["message"]["content"].strip()
+    # Output unique, valid, deterministic citations
     citations = [{"index": int(i), "text": chunks[int(i)]} for i in neighbors]
     return {"answer": answer, "citations": citations}
