@@ -24,7 +24,8 @@ class TextRequest(BaseModel):
 
 class QARequest(BaseModel):
     question: str
-    contract_text: str
+    context: str = None
+    contract_text: str = None
 
 @router.post("/parse")
 async def parse_contract(file: UploadFile = File(...)):
@@ -95,16 +96,16 @@ async def detect_conflicts(payload: TextRequest):
     }
 
 @router.post("/qa")
+@router.post("/api/v1/ask")
 async def qa_endpoint(payload: QARequest):
-    chunks = rag_service.chunk_text(payload.contract_text)
-    embeddings = rag_service.embed_texts(chunks)
-    index = rag_service.build_faiss_index(np.array(embeddings))
+    context = payload.context or payload.contract_text
+    if not context:
+        raise HTTPException(status_code=400, detail="Missing context or contract_text")
     
-    # Simple top-1 RAG for demo
-    indices = rag_service.query_index(index, payload.question, k=1)
-    context = chunks[indices[0]]
+    answer = rag_service.rag_pipeline(
+        query=payload.question, 
+        context=context, 
+        llm_client=inference_service.client
+    )
     
-    prompt = f"Context: {context}\n\nQuestion: {payload.question}\n\nAnswer the question based ONLY on the context."
-    answer = inference_service.client.generate(prompt)
-    
-    return {"answer": answer, "context": context}
+    return {"answer": answer}

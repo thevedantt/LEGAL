@@ -2,7 +2,7 @@ import os
 
 class Config:
     LMSTUDIO_URL = os.getenv("LMSTUDIO_URL", "http://127.0.0.1:1234/v1/chat/completions")
-    LMSTUDIO_MODEL = os.getenv("LMSTUDIO_MODEL", "mistral")
+    LMSTUDIO_MODEL = os.getenv("LMSTUDIO_MODEL", "mistral-7b-instruct-v0.2")
     UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./tmp")
     
     LABEL_SET = [
